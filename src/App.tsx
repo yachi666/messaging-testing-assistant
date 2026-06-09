@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   CaretDown,
   ClockCounterClockwise,
@@ -9,6 +9,7 @@ import {
   Play,
   Warning,
 } from "@phosphor-icons/react";
+import { getBackend, postForm, postJson } from "./api";
 
 type WorkspaceId = "classification" | "onboarding" | "testing";
 
@@ -48,6 +49,34 @@ const flowSteps = [
 ] as const;
 
 const testingSteps = ["Upload", "Generate", "Execute", "Report"] as const;
+
+function formValue(formData: FormData, name: string) {
+  const value = formData.get(name);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function runBackendAction(
+  pendingMessage: string,
+  successMessage: string,
+  action: () => Promise<{ message?: string; url?: string; downloadUrl?: string }>,
+  onStatus: (message: string) => void,
+) {
+  onStatus(pendingMessage);
+
+  try {
+    const result = await action();
+    const targetUrl = result.url ?? result.downloadUrl;
+
+    if (targetUrl) {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
+
+    onStatus(result.message || successMessage);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Request failed.";
+    onStatus(message);
+  }
+}
 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("onboarding");
@@ -326,10 +355,32 @@ Example utterances:
         <Play size={18} weight="fill" aria-hidden="true" />
         Run Tests
       </button>
-      <button className="secondary rail-save" type="button" onClick={() => onStatus("Workspace saved.")}>
+      <button
+        className="secondary rail-save"
+        type="button"
+        onClick={() =>
+          runBackendAction(
+            "Saving workspace...",
+            "Workspace saved.",
+            () => postJson("/api/workspaces/save", { provider, model }),
+            onStatus,
+          )
+        }
+      >
         Save Workspace
       </button>
-      <button className="danger text-danger" type="button" onClick={() => onStatus("Discard workspace requested.")}>
+      <button
+        className="danger text-danger"
+        type="button"
+        onClick={() =>
+          runBackendAction(
+            "Requesting workspace discard...",
+            "Discard workspace requested.",
+            () => postJson("/api/workspaces/discard", { provider, model }),
+            onStatus,
+          )
+        }
+      >
         Discard Workspace
       </button>
     </aside>
@@ -345,6 +396,42 @@ function ClassificationWorkspace({
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onStatus: (message: string) => void;
 }) {
+  function analyzeClassification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    void runBackendAction(
+      "Classification analysis started.",
+      "Classification analysis completed.",
+      () => postForm("/api/classification/analyze", formData),
+      onStatus,
+    );
+  }
+
+  function refreshHistory(event: MouseEvent<HTMLButtonElement>) {
+    const form = event.currentTarget.form;
+    const folder = form ? encodeURIComponent(formValue(new FormData(form), "historyFolder")) : "";
+
+    void runBackendAction(
+      "Refreshing classification history...",
+      "Classification history refreshed.",
+      () => getBackend(`/api/classification/history?folder=${folder}`),
+      onStatus,
+    );
+  }
+
+  function downloadLatestHistory(event: MouseEvent<HTMLButtonElement>) {
+    const form = event.currentTarget.form;
+    const folder = form ? encodeURIComponent(formValue(new FormData(form), "historyFolder")) : "";
+
+    void runBackendAction(
+      "Preparing latest CSV download...",
+      "Latest CSV downloaded.",
+      () => getBackend(`/api/classification/history/latest?folder=${folder}`),
+      onStatus,
+    );
+  }
+
   return (
     <section className="workspace-panel-stack active" id="classification" role="tabpanel" aria-labelledby="tab-classification">
       <WorkspaceHero
@@ -359,21 +446,21 @@ function ClassificationWorkspace({
       />
 
       <div className="classification-grid">
-        <section className="card panel">
+        <form className="card panel" onSubmit={analyzeClassification}>
           <SectionHeader icon="IN" eyebrow="Input" title="SMS Classification Input" />
           <p className="card-desc">Upload TXT, CSV, or XLSX SMS record files and generate a classification CSV artifact.</p>
           <div className="field">
             <label htmlFor="classification-file">
               <span className="required-mark">*</span>SMS Record File
             </label>
-            <input id="classification-file" type="file" accept=".txt,.csv,.xlsx" onChange={onFileChange} />
+            <input id="classification-file" name="smsRecordFile" type="file" accept=".txt,.csv,.xlsx" onChange={onFileChange} />
             <small>Supported formats: TXT, CSV, XLSX.</small>
             <FilePreview fileName={fileName} />
           </div>
-          <TextField id="classification-folder" label="GitHub Folder Path" required placeholder="Enter GitHub folder path" />
-          <TextField id="classification-message" label="Commit Message" placeholder="Leave blank to use the default commit message" />
+          <TextField id="classification-folder" name="githubFolder" label="GitHub Folder Path" required placeholder="Enter GitHub folder path" />
+          <TextField id="classification-message" name="commitMessage" label="Commit Message" placeholder="Leave blank to use the default commit message" />
           <div className="button-row">
-            <button className="primary" type="button" onClick={() => onStatus("Classification analysis started.")}>
+            <button className="primary" type="submit">
               User Case Analysis
             </button>
           </div>
@@ -385,20 +472,20 @@ function ClassificationWorkspace({
               ["0", "Manual review"],
             ]}
           />
-        </section>
+        </form>
 
-        <section className="card panel">
+        <form className="card panel">
           <SectionHeader icon="HI" eyebrow="History" title="Classification History" />
           <p className="card-desc">
             Review generated sms-classification CSV files from the configured GitHub history folder, open them in GitHub,
             or download them locally.
           </p>
-          <TextField id="history-folder" label="History Folder Path" placeholder="Enter GitHub history folder" />
+          <TextField id="history-folder" name="historyFolder" label="History Folder Path" placeholder="Enter GitHub history folder" />
           <div className="button-row">
-            <button className="secondary" type="button" onClick={() => onStatus("Classification history refreshed.")}>
+            <button className="secondary" type="button" onClick={refreshHistory}>
               Refresh History
             </button>
-            <button className="secondary" type="button" onClick={() => onStatus("Latest CSV downloaded.")}>
+            <button className="secondary" type="button" onClick={downloadLatestHistory}>
               Download CSV
             </button>
           </div>
@@ -411,22 +498,88 @@ function ClassificationWorkspace({
               </div>
               <p className="muted">Prompt: default-classification-prompt</p>
               <div className="record-actions">
-                <button className="secondary" type="button" onClick={() => onStatus("Opening sms-classification-sample.csv.")}>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() =>
+                    void runBackendAction(
+                      "Opening sms-classification-sample.csv...",
+                      "Opening sms-classification-sample.csv.",
+                      () => getBackend("/api/classification/files/sms-classification-sample.csv"),
+                      onStatus,
+                    )
+                  }
+                >
                   Open CSV
                 </button>
-                <button className="secondary" type="button" onClick={() => onStatus("Downloading sms-classification-sample.csv.")}>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() =>
+                    void runBackendAction(
+                      "Downloading sms-classification-sample.csv...",
+                      "Downloading sms-classification-sample.csv.",
+                      () => getBackend("/api/classification/files/sms-classification-sample.csv/download"),
+                      onStatus,
+                    )
+                  }
+                >
                   Download
                 </button>
               </div>
             </article>
           </div>
-        </section>
+        </form>
       </div>
     </section>
   );
 }
 
 function OnboardingWorkspace({ onStatus }: { onStatus: (message: string) => void }) {
+  function activateUseCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    void runBackendAction(
+      "Activating UseCase...",
+      "UseCase Activate Success. Files are ready to download.",
+      () =>
+        postJson("/api/usecases/activate", {
+          type: formValue(formData, "useCaseType"),
+          name: formValue(formData, "useCaseName"),
+          tenantId: formValue(formData, "tenantId"),
+          pipeline: formValue(formData, "pipeline"),
+          sourceLists: formValue(formData, "sourceLists"),
+        }),
+      onStatus,
+    );
+  }
+
+  function downloadUseCasePackage() {
+    void runBackendAction(
+      "Preparing UseCase package download...",
+      "UseCase package downloaded.",
+      () => getBackend("/api/usecases/package/download"),
+      onStatus,
+    );
+  }
+
+  function deactivateUseCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    void runBackendAction(
+      "Sending deactivate request...",
+      "Deactivate request sent successfully.",
+      () =>
+        postJson("/api/usecases/deactivate", {
+          useCaseName: formValue(formData, "useCaseName"),
+          tenantId: formValue(formData, "tenantId"),
+        }),
+      onStatus,
+    );
+  }
+
   return (
     <section className="workspace-panel-stack active" id="onboarding" role="tabpanel" aria-labelledby="tab-onboarding">
       <WorkspaceHero
@@ -442,44 +595,46 @@ function OnboardingWorkspace({ onStatus }: { onStatus: (message: string) => void
 
       <section className="card panel usecase-section">
         <SectionHeader icon="AC" eyebrow="Activate" title="UseCase Activate" />
-        <div className="field">
+        <form onSubmit={activateUseCase}>
+          <div className="field">
           <label htmlFor="usecase-type">UseCase Type</label>
-          <select id="usecase-type">
+          <select id="usecase-type" name="useCaseType">
             <option>MQ_CONNECTOR</option>
             <option>INGRESS_BRIDGE_API</option>
           </select>
-        </div>
-        <div className="usecase-subcard">
-          <div className="usecase-config-grid">
-            <TextField id="usecase-name" label="UseCase Name" required placeholder="Enter UseCase name" />
-            <TextField id="tenant-id" label="Tenant ID" required placeholder="Enter Tenant ID" />
-            <TextField id="pipeline" label="Pipeline" placeholder="Enter pipeline" />
           </div>
-          <div className="field">
-            <label htmlFor="source-list">Source Lists</label>
-            <textarea id="source-list" placeholder="source, sender, senderId, mode, providers" />
+          <div className="usecase-subcard">
+            <div className="usecase-config-grid">
+              <TextField id="usecase-name" name="useCaseName" label="UseCase Name" required placeholder="Enter UseCase name" />
+              <TextField id="tenant-id" name="tenantId" label="Tenant ID" required placeholder="Enter Tenant ID" />
+              <TextField id="pipeline" name="pipeline" label="Pipeline" placeholder="Enter pipeline" />
+            </div>
+            <div className="field">
+              <label htmlFor="source-list">Source Lists</label>
+              <textarea id="source-list" name="sourceLists" placeholder="source, sender, senderId, mode, providers" />
+            </div>
           </div>
-        </div>
-        <div className="actions">
-          <button className="primary" type="button" onClick={() => onStatus("UseCase Activate Success. Files are ready to download.")}>
-            Activate
-          </button>
-          <button className="secondary" type="button" onClick={() => onStatus("UseCase package downloaded.")}>
-            Download
-          </button>
-        </div>
+          <div className="actions">
+            <button className="primary" type="submit">
+              Activate
+            </button>
+            <button className="secondary" type="button" onClick={downloadUseCasePackage}>
+              Download
+            </button>
+          </div>
+        </form>
 
-        <div className="usecase-subcard">
+        <form className="usecase-subcard" onSubmit={deactivateUseCase}>
           <h3 className="card-title">Deactivate UseCase</h3>
           <p className="card-desc">Submit a deactivation request by UseCase Name and Tenant ID.</p>
           <div className="usecase-config-grid">
-            <TextField id="deactivate-usecase" label="UseCase Name" placeholder="Enter UseCase name" />
-            <TextField id="deactivate-tenant" label="Tenant ID" placeholder="Enter Tenant ID" />
+            <TextField id="deactivate-usecase" name="useCaseName" label="UseCase Name" placeholder="Enter UseCase name" />
+            <TextField id="deactivate-tenant" name="tenantId" label="Tenant ID" placeholder="Enter Tenant ID" />
           </div>
-          <button className="danger" type="button" onClick={() => onStatus("Deactivate request sent successfully.")}>
+          <button className="danger" type="submit">
             Deactivate
           </button>
-        </div>
+        </form>
       </section>
     </section>
   );
@@ -496,6 +651,45 @@ function TestingWorkspace({
   onOpenRun: () => void;
   onStatus: (message: string) => void;
 }) {
+  function generateTestCases(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    void runBackendAction(
+      "Generating test case with the selected language model...",
+      "Test case artifact generated.",
+      () => postForm("/api/test-cases/generate", formData),
+      onStatus,
+    );
+  }
+
+  function refreshRecords() {
+    void runBackendAction(
+      "Refreshing generated records...",
+      "Records refreshed.",
+      () => getBackend("/api/test-cases/records"),
+      onStatus,
+    );
+  }
+
+  function refreshReport() {
+    void runBackendAction(
+      "Refreshing report...",
+      "Report refreshed.",
+      () => postJson("/api/test-cases/report/refresh", { recordName: "user-upload-test-case-mq-simple-xml.csv" }),
+      onStatus,
+    );
+  }
+
+  function viewReport() {
+    void runBackendAction(
+      "Opening generated report...",
+      "Opening generated report.",
+      () => getBackend("/api/test-cases/report?recordName=user-upload-test-case-mq-simple-xml.csv"),
+      onStatus,
+    );
+  }
+
   return (
     <section className="workspace-panel-stack active" id="testing" role="tabpanel" aria-labelledby="tab-testing">
       <WorkspaceHero
@@ -519,14 +713,14 @@ function TestingWorkspace({
       </WorkspaceHero>
 
       <div className="tab-panel-grid">
-        <section className="card panel">
+        <form className="card panel" onSubmit={generateTestCases}>
           <SectionHeader icon="GE" eyebrow="Generator" title="Upload and Generate" />
           <p className="card-desc">Generate a GitHub-backed test case artifact from the selected interface or schema file.</p>
           <div className="field">
             <label htmlFor="generation-mode">
               <span className="required-mark">*</span>Action Type
             </label>
-            <select id="generation-mode">
+            <select id="generation-mode" name="actionType">
               <option>Generation test case</option>
               <option>Upload test case</option>
             </select>
@@ -535,23 +729,23 @@ function TestingWorkspace({
             <label htmlFor="interface-file">
               <span className="required-mark">*</span>Choose File
             </label>
-            <input id="interface-file" type="file" onChange={onFileChange} />
+            <input id="interface-file" name="interfaceFile" type="file" onChange={onFileChange} />
             <small>Support JSON, YAML, TXT, XML, OpenAPI, Postman collection, or other message specification files.</small>
             <FilePreview fileName={fileName} />
           </div>
-          <TextField id="github-folder" label="GitHub Folder Path" required placeholder="Enter GitHub folder path" />
-          <TextField id="test-case-count" label="Test Case Count" type="number" placeholder="Optional" />
-          <TextField id="commit-message" label="Commit Message" placeholder="Leave blank to use default commit message" />
-          <button className="primary" type="button" onClick={() => onStatus("Generating test case with the selected language model...")}>
+          <TextField id="github-folder" name="githubFolder" label="GitHub Folder Path" required placeholder="Enter GitHub folder path" />
+          <TextField id="test-case-count" name="testCaseCount" label="Test Case Count" type="number" placeholder="Optional" />
+          <TextField id="commit-message" name="commitMessage" label="Commit Message" placeholder="Leave blank to use default commit message" />
+          <button className="primary" type="submit">
             Upload and Generate
           </button>
-        </section>
+        </form>
 
         <section className="card panel">
           <SectionHeader icon="RE" eyebrow="Records" title="Generated Test Case Records" />
           <p className="card-desc">Refresh generated records, run a test case, generate reports, and open generated report output.</p>
           <div className="button-row">
-            <button className="secondary" type="button" onClick={() => onStatus("Records refreshed.")}>
+            <button className="secondary" type="button" onClick={refreshRecords}>
               Refresh Records
             </button>
           </div>
@@ -567,10 +761,10 @@ function TestingWorkspace({
                 <button className="secondary" type="button" onClick={onOpenRun}>
                   Run
                 </button>
-                <button className="secondary" type="button" onClick={() => onStatus("Report refreshed.")}>
+                <button className="secondary" type="button" onClick={refreshReport}>
                   Refresh Report
                 </button>
-                <button className="secondary" type="button" onClick={() => onStatus("Opening generated report.")}>
+                <button className="secondary" type="button" onClick={viewReport}>
                   View Report
                 </button>
               </div>
@@ -636,12 +830,14 @@ function SectionHeader({ icon, eyebrow, title }: { icon: string; eyebrow: string
 
 function TextField({
   id,
+  name,
   label,
   placeholder,
   required = false,
   type = "text",
 }: {
   id: string;
+  name?: string;
   label: string;
   placeholder: string;
   required?: boolean;
@@ -653,7 +849,7 @@ function TextField({
         {required ? <span className="required-mark">*</span> : null}
         {label}
       </label>
-      <input id={id} type={type} min={type === "number" ? 1 : undefined} placeholder={placeholder} />
+      <input id={id} name={name ?? id} type={type} min={type === "number" ? 1 : undefined} placeholder={placeholder} />
     </div>
   );
 }
@@ -686,9 +882,23 @@ function RunModal({
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   onStatus: (message: string) => void;
 }) {
-  function confirmRun() {
+  function confirmRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    void runBackendAction(
+      "Running selected test case...",
+      "Selected test case is running.",
+      () =>
+        postJson("/api/test-cases/run", {
+          integrationPattern: formValue(formData, "integrationPattern"),
+          tenantId: formValue(formData, "tenantId"),
+          useCase: formValue(formData, "useCase"),
+        }),
+      onStatus,
+    );
+
     onClose();
-    onStatus("Running selected test case...");
   }
 
   return (
@@ -702,23 +912,25 @@ function RunModal({
             Close
           </button>
         </div>
-        <div className="field">
-          <label htmlFor="integration-pattern">Integration Pattern</label>
-          <select id="integration-pattern" autoFocus>
-            <option>ingress_api</option>
-            <option>mq_connector</option>
-          </select>
-        </div>
-        <TextField id="run-tenant" label="Tenant ID" placeholder="Enter Tenant ID" />
-        <TextField id="run-usecase" label="UseCase" placeholder="Enter UseCase" />
-        <div className="actions">
-          <button className="primary" type="button" onClick={confirmRun}>
-            Confirm Run
-          </button>
-          <button className="secondary" type="button" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
+        <form onSubmit={confirmRun}>
+          <div className="field">
+            <label htmlFor="integration-pattern">Integration Pattern</label>
+            <select id="integration-pattern" name="integrationPattern" autoFocus>
+              <option>ingress_api</option>
+              <option>mq_connector</option>
+            </select>
+          </div>
+          <TextField id="run-tenant" name="tenantId" label="Tenant ID" placeholder="Enter Tenant ID" />
+          <TextField id="run-usecase" name="useCase" label="UseCase" placeholder="Enter UseCase" />
+          <div className="actions">
+            <button className="primary" type="submit">
+              Confirm Run
+            </button>
+            <button className="secondary" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );

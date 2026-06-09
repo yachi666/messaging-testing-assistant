@@ -1,5 +1,14 @@
 import { useState } from "react";
 import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import {
+  CaretDown,
+  ClockCounterClockwise,
+  Folder,
+  GearSix,
+  GridFour,
+  Play,
+  Warning,
+} from "@phosphor-icons/react";
 
 type WorkspaceId = "classification" | "onboarding" | "testing";
 
@@ -41,7 +50,7 @@ const flowSteps = [
 const testingSteps = ["Upload", "Generate", "Execute", "Report"] as const;
 
 function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("classification");
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("onboarding");
   const [status, setStatus] = useState("Ready. Select a workspace and complete the required fields.");
   const [provider, setProvider] = useState("Azure OpenAI");
   const [model, setModel] = useState("gpt-4.1");
@@ -49,7 +58,6 @@ function App() {
   const [interfaceFile, setInterfaceFile] = useState("");
   const [isRunModalOpen, setRunModalOpen] = useState(false);
 
-  const activeWorkspaceMeta = workspaces.find((workspace) => workspace.id === activeWorkspace) ?? workspaces[0];
   const modelRoute = `${provider} / ${model}`;
 
   function showStatus(message: string) {
@@ -91,94 +99,87 @@ function App() {
     <main className="page">
       <div className="app-shell">
         <header className="topbar">
-          <div>
-            <span className="eyebrow">
-              <span className="signal" aria-hidden="true" />
-              AI QA Operations Console
-            </span>
+          <div className="brand-block">
             <h1>Messaging Testing Assistant</h1>
             <p className="topbar-copy">
-              Upload message records or API schemas, let the selected model draft test assets, execute cases against MDP,
-              and review generated reports from one focused workspace.
+              AI-powered QA operations for messaging experiences.
             </p>
           </div>
-          <aside className="topbar-panel" aria-label="Workspace summary">
-            <HealthRow label="Workspace" value={activeWorkspaceMeta.label} />
-            <HealthRow label="Model route" value={modelRoute} />
-            <HealthRow label="Run mode" value="Human reviewed" />
-          </aside>
+
+          <div className="command-cluster">
+            <div className="notice compact">
+              <Warning size={18} weight="fill" aria-hidden="true" />
+              <span>LLM outputs can be inaccurate or incomplete. Always review results before taking action.</span>
+            </div>
+            <div className="command-field">
+              <label htmlFor="llm-provider">LLM Provider</label>
+              <select id="llm-provider" value={provider} onChange={(event) => setProvider(event.currentTarget.value)}>
+                <option>Azure OpenAI</option>
+                <option>OpenAI</option>
+                <option>Anthropic</option>
+              </select>
+            </div>
+            <div className="command-field">
+              <label htmlFor="llm-model">LLM Model</label>
+              <select id="llm-model" value={model} onChange={(event) => setModel(event.currentTarget.value)}>
+                <option>gpt-4.1</option>
+                <option>gpt-4o</option>
+                <option>claude-3-5-sonnet</option>
+              </select>
+            </div>
+          </div>
         </header>
 
-        <div className="notice">
-          <span className="status-banner__icon" aria-hidden="true">
-            !
-          </span>
-          <div>
-            <strong>Review Required</strong>
-            LLM outputs may contain inaccuracies or hallucinations. Please perform a human review before using any generated
-            output.
-          </div>
-        </div>
-
-        <section className="status-banner" id="statusBanner" role="status" aria-live="polite">
-          <span className="status-banner__icon" aria-hidden="true">
-            i
-          </span>
-          <div>
-            <span className="status-banner__label">Status</span>
-            <span>{status}</span>
-          </div>
-        </section>
-
         <div className="workspace-layout">
-          <aside className="left-column">
-            <section className="card panel">
-              <h2 className="card-title">Language Model</h2>
-              <div className="settings-kicker">
-                <span>Global settings</span>
-                <span className="mini-pill">LIVE</span>
-              </div>
-              <div className="field">
-                <label htmlFor="llm-provider">
-                  <span className="required-mark">*</span>LLM Provider
-                </label>
-                <select id="llm-provider" value={provider} onChange={(event) => setProvider(event.currentTarget.value)}>
-                  <option>Azure OpenAI</option>
-                  <option>OpenAI</option>
-                  <option>Anthropic</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="llm-model">
-                  <span className="required-mark">*</span>LLM Model
-                </label>
-                <select id="llm-model" value={model} onChange={(event) => setModel(event.currentTarget.value)}>
-                  <option>gpt-4.1</option>
-                  <option>gpt-4o</option>
-                  <option>claude-3-5-sonnet</option>
-                </select>
-              </div>
-            </section>
+          <aside className="app-nav" aria-label="Primary navigation">
+            <button className="nav-item active" type="button">
+              <GridFour size={20} aria-hidden="true" />
+              Workbench
+            </button>
+            <button className="nav-item" type="button" onClick={() => showStatus("History view is ready for review.")}>
+              <ClockCounterClockwise size={20} aria-hidden="true" />
+              History
+            </button>
+            <button className="nav-item" type="button" onClick={() => showStatus("Template library opened.")}>
+              <Folder size={20} aria-hidden="true" />
+              Templates
+            </button>
+            <button className="nav-item" type="button" onClick={() => showStatus("Settings panel opened.")}>
+              <GearSix size={20} aria-hidden="true" />
+              Settings
+            </button>
 
-            <section className="card panel">
-              <h2 className="card-title">Flow Map</h2>
-              <p className="card-desc">A compact view of the core testing path.</p>
-              <div className="side-progress" aria-label="Workflow steps">
-                {flowSteps.map(([title, description], index) => (
-                  <div className="progress-item" key={title}>
-                    <span className="progress-number">{String(index + 1).padStart(2, "0")}</span>
-                    <span>
-                      <strong>{title}</strong>
-                      <span>{description}</span>
-                    </span>
-                  </div>
-                ))}
+            <div className="recent-list">
+              <span className="nav-kicker">Recent Workspaces</span>
+              {["Welcome Series - Q2", "Abandoned Cart - V3", "Reactivation - Pilot", "Windback - SMS"].map((item, index) => (
+                <button className="recent-item" key={item} type="button" onClick={() => showStatus(`${item} selected.`)}>
+                  <strong>{item}</strong>
+                  <span>Updated {index + 1}d ago</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="profile-card">
+              <span className="avatar">RM</span>
+              <div>
+                <strong>Riley Morgan</strong>
+                <span>QA Operations</span>
               </div>
-            </section>
+              <CaretDown size={16} aria-hidden="true" />
+            </div>
           </aside>
 
-          <div className="right-column">
-            <section className="tab-shell">
+          <div className="right-column workbench-shell">
+            <section className="status-banner" id="statusBanner" role="status" aria-live="polite">
+              <span className="status-dot" aria-hidden="true" />
+              <div>
+                <span className="status-banner__label">System Status</span>
+                <span>{status}</span>
+              </div>
+              <span className="status-time">Model route: {modelRoute}</span>
+            </section>
+
+            <div className="workspace-command-row">
               <nav className="tab-bar" aria-label="Testing assistant workspaces">
                 {workspaces.map((workspace) => (
                   <button
@@ -197,6 +198,19 @@ function App() {
                 ))}
               </nav>
 
+              <div className="flow-strip" aria-label="Workflow steps">
+                <span className="workflow-label">Workflow</span>
+                {flowSteps.map(([title], index) => (
+                  <div className={`flow-step ${index === 0 ? "active" : ""}`} key={title}>
+                    <span className="flow-icon" aria-hidden="true">{index + 1}</span>
+                    <strong>{title}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="document-layout">
+              <section className="tab-shell">
               {activeWorkspace === "classification" ? (
                 <ClassificationWorkspace
                   fileName={classificationFile}
@@ -213,7 +227,10 @@ function App() {
                   onStatus={showStatus}
                 />
               ) : null}
-            </section>
+              </section>
+
+              <ReviewRail provider={provider} model={model} onRun={() => setRunModalOpen(true)} onStatus={showStatus} />
+            </div>
           </div>
         </div>
       </div>
@@ -230,12 +247,92 @@ function App() {
   );
 }
 
-function HealthRow({ label, value }: { label: string; value: string }) {
+function ReviewRail({
+  provider,
+  model,
+  onRun,
+  onStatus,
+}: {
+  provider: string;
+  model: string;
+  onRun: () => void;
+  onStatus: (message: string) => void;
+}) {
   return (
-    <div className="health-row">
-      <span className="health-label">{label}</span>
-      <span className="health-value">{value}</span>
-    </div>
+    <aside className="review-rail" aria-label="Workspace review panel">
+      <section className="rail-card compact-card">
+        <div className="rail-title-row">
+          <h2 className="rail-title">Workspace Status</h2>
+          <span className="ready-pill">Ready</span>
+        </div>
+      </section>
+
+      <section className="rail-card">
+        <div className="rail-title-row">
+          <h2 className="rail-title">Model Route</h2>
+          <button className="secondary small" type="button" onClick={() => onStatus("Model settings ready to edit.")}>
+            Edit settings
+          </button>
+        </div>
+        <dl className="rail-definition">
+          <div>
+            <dt>Provider</dt>
+            <dd>{provider}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>{model}</dd>
+          </div>
+          <div>
+            <dt>Temperature</dt>
+            <dd>0.3</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="rail-card">
+        <div className="rail-title-row">
+          <h2 className="rail-title">Generated Artifact Preview</h2>
+          <button className="text-button" type="button" onClick={() => onStatus("Opening all generated artifacts.")}>
+            View all
+          </button>
+        </div>
+        <span className="artifact-label">Sample Test Case</span>
+        <pre className="code-preview">{`TC-001
+Title: Check account balance
+Intent: Get Account Balance
+
+Example utterances:
+- What's my checking balance?
+- How much is in my account?
+- Show my current balance.`}</pre>
+      </section>
+
+      <section className="rail-card">
+        <div className="rail-title-row">
+          <h2 className="rail-title">Action Checklist</h2>
+          <span className="muted">5 of 5 completed</span>
+        </div>
+        <div className="check-progress" aria-hidden="true" />
+        {["Validate test cases", "Validate user journeys", "Validate example utterances", "Validate edge cases", "Validate system prompts"].map((item) => (
+          <label className="check-row" key={item}>
+            <input type="checkbox" defaultChecked />
+            <span>{item}</span>
+          </label>
+        ))}
+      </section>
+
+      <button className="primary rail-run" type="button" onClick={onRun}>
+        <Play size={18} weight="fill" aria-hidden="true" />
+        Run Tests
+      </button>
+      <button className="secondary rail-save" type="button" onClick={() => onStatus("Workspace saved.")}>
+        Save Workspace
+      </button>
+      <button className="danger text-danger" type="button" onClick={() => onStatus("Discard workspace requested.")}>
+        Discard Workspace
+      </button>
+    </aside>
   );
 }
 
